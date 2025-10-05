@@ -9,6 +9,9 @@ const downloadBtn = document.getElementById("downloadBtn");
 uploadBox.addEventListener("click", () => imageInput.click());
 imageInput.addEventListener("change", handleImageUpload);
 
+// 🧠 Replace this with your own remove.bg API key
+const REMOVE_BG_API_KEY = "YOUR_REMOVE_BG_API_KEY";
+
 async function handleImageUpload(e) {
   const file = e.target.files[0];
   if (!file) return;
@@ -17,15 +20,10 @@ async function handleImageUpload(e) {
   reader.onload = async function (event) {
     const imageData = event.target.result;
 
-    // Show loading text
-    uploadBox.innerHTML = "<p>Removing background... please wait.</p>";
+    uploadBox.innerHTML = "<p>Removing background... please wait ⏳</p>";
 
-    // Background removal using imgly SDK
-    const { removeBackground } = window.imgly;
     try {
-      const resultBlob = await removeBackground(imageData, {
-        output: { format: "image/png" }
-      });
+      const resultBlob = await removeBackgroundAPI(imageData);
 
       const url = URL.createObjectURL(resultBlob);
       const img = new Image();
@@ -38,21 +36,52 @@ async function handleImageUpload(e) {
       };
       img.src = url;
 
-      // Reset upload box
       uploadBox.innerHTML = `<p>Click or drag another jewellery image</p>`;
 
-      // Set download/share functionality
       downloadBtn.onclick = () => downloadImage(resultBlob);
       shareBtn.onclick = () => shareImage(resultBlob);
+
     } catch (err) {
       console.error(err);
-      uploadBox.innerHTML = "<p>Something went wrong. Try again.</p>";
+      uploadBox.innerHTML = "<p>⚠️ Something went wrong. Please check your API key.</p>";
     }
   };
   reader.readAsDataURL(file);
 }
 
-// Download processed image
+// 🔧 Background Removal using Remove.bg API
+async function removeBackgroundAPI(imageData) {
+  const formData = new FormData();
+  formData.append("image_file", dataURLtoBlob(imageData));
+  formData.append("size", "auto");
+
+  const response = await fetch("https://api.remove.bg/v1.0/removebg", {
+    method: "POST",
+    headers: {
+      "X-Api-Key": REMOVE_BG_API_KEY
+    },
+    body: formData
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Remove.bg error: ${errText}`);
+  }
+
+  return await response.blob();
+}
+
+// Convert base64 → Blob
+function dataURLtoBlob(dataURL) {
+  const byteString = atob(dataURL.split(',')[1]);
+  const mimeString = dataURL.split(',')[0].split(':')[1].split(';')[0];
+  const ab = new ArrayBuffer(byteString.length);
+  const ia = new Uint8Array(ab);
+  for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
+  return new Blob([ab], { type: mimeString });
+}
+
+// 💾 Download processed image
 function downloadImage(blob) {
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
@@ -60,7 +89,7 @@ function downloadImage(blob) {
   link.click();
 }
 
-// Share using Web Share API
+// 📲 Share via Web Share API (mobile browsers)
 async function shareImage(blob) {
   if (navigator.canShare && navigator.canShare({ files: [new File([blob], "jewellery.png", { type: "image/png" })] })) {
     await navigator.share({
@@ -69,6 +98,6 @@ async function shareImage(blob) {
       text: "Check out this jewellery image I just processed!"
     });
   } else {
-    alert("Sharing not supported on this device.");
+    alert("Sharing not supported on this device. Try downloading instead.");
   }
 }
